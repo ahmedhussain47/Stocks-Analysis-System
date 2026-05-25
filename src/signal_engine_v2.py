@@ -44,6 +44,11 @@ class Signal:
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
 
+    # Aliases for backward compatibility with notebook 5
+    @property
+    def pattern_name(self) -> Optional[str]:
+        return self.pattern_detected
+
 class SignalEngineV2:
     """Peak accuracy ML signal generator."""
 
@@ -52,7 +57,9 @@ class SignalEngineV2:
         symbol: str = 'XAUUSD',
         models_dir: Optional[Path] = None,
         use_patterns: bool = True,
-        pattern_bonus: float = 0.15,  # +15% confidence if pattern aligns
+        pattern_bonus: float = 0.15,
+        model_bundles: Optional[Dict[str, 'ModelBundle']] = None,  # For backward compat with notebook 5
+        pattern_detector: Optional['PatternDetector'] = None,  # For backward compat
     ):
         """
         Args:
@@ -60,21 +67,30 @@ class SignalEngineV2:
             models_dir: Path to trained models
             use_patterns: Enable rule-based pattern detection
             pattern_bonus: Confidence boost if pattern matches signal direction
+            model_bundles: (Optional) Pre-loaded model bundles dict for advanced usage
+            pattern_detector: (Optional) Pre-loaded pattern detector for advanced usage
         """
         self.symbol = symbol
         self.models_dir = models_dir or Path(__file__).parent.parent / 'training' / 'models'
         self.use_patterns = use_patterns
         self.pattern_bonus = pattern_bonus
 
-        # Load model bundles per timeframe
-        self.models = {}
-        self.pattern_detector = PatternDetector(min_bars=10) if use_patterns else None
+        # Support both APIs: pre-loaded components or auto-load
+        if model_bundles is not None:
+            self.models = model_bundles
+        else:
+            # Load model bundles per timeframe
+            self.models = {}
+            for tf in ['1D', '4H', '1H', '15min']:
+                try:
+                    self.models[tf] = ModelBundle(tf, self.models_dir)
+                except Exception as e:
+                    print(f"[WARN] Could not load models for {tf}: {e}")
 
-        for tf in ['1D', '4H', '1H', '15min']:
-            try:
-                self.models[tf] = ModelBundle(tf, self.models_dir)
-            except Exception as e:
-                print(f"[WARN] Could not load models for {tf}: {e}")
+        if pattern_detector is not None:
+            self.pattern_detector = pattern_detector
+        else:
+            self.pattern_detector = PatternDetector(min_bars=10) if use_patterns else None
 
     def generate_signal(self, df: pd.DataFrame, timeframe: str) -> Signal:
         """

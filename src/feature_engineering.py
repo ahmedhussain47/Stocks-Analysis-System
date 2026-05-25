@@ -338,7 +338,7 @@ def build_features_v2(df: pd.DataFrame, timeframe: str = '1D') -> pd.DataFrame:
     feat = df[['open', 'high', 'low', 'close', 'volume']].copy()
 
     # Add basic technical indicators
-    feat['atr_14'] = atr(df['high'], df['low'], df['close'], 14)
+    feat['atr_14'] = atr(df, 14)
     feat['rsi_14'] = rsi(df['close'], 14)
     feat['ema_20'] = ema(df['close'], 20)
     feat['ema_50'] = ema(df['close'], 50)

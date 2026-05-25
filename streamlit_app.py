@@ -11,14 +11,18 @@ from pathlib import Path
 from datetime import datetime, timedelta
 import hashlib
 import time
-import threading
 
 # Fix imports - add parent directory to path
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from src.signal_engine_v2 import SignalEngineV2
-from src.mt5_trader import MT5Trader
+try:
+    from src.signal_engine_v2 import SignalEngineV2
+    from src.mt5_trader import MT5Trader
+    MODELS_AVAILABLE = True
+except ImportError as e:
+    st.error(f"⚠️ Missing dependencies: {str(e)}")
+    MODELS_AVAILABLE = False
 
 # Configuration
 ADMIN_PASSWORD = "Ahmed@477447"  # Change this!
@@ -161,13 +165,32 @@ def main():
     st.title("📈 Peak Accuracy ML Trading System")
     st.subheader("91.92% Accuracy | Multi-Timeframe Ensemble | XAUUSD")
 
+    # Check if models are available
+    if not MODELS_AVAILABLE:
+        st.warning("⚠️ System Status: Initialization Mode")
+        st.info("""
+        The ML models are being loaded. Please ensure:
+        1. Training models exist in `training/models/`
+        2. All dependencies are installed
+        3. MT5 demo account is configured
+
+        **Quick Setup:**
+        ```bash
+        # Install dependencies
+        pip install tensorflow xgboost scikit-learn pandas numpy MetaTrader5
+
+        # Run training if needed
+        python training/train_ensemble_v2.py
+        ```
+        """)
+
     # Show admin panel
     show_admin_panel()
 
     # Check session validity
     is_valid, msg = check_session_validity()
 
-    if is_valid:
+    if is_valid and MODELS_AVAILABLE:
         st.success(msg)
 
         # Main trading interface
@@ -177,98 +200,101 @@ def main():
             st.header("Signal Generation")
 
             if st.button("🎯 Generate Trading Signals", use_container_width=True, type="primary"):
-                with st.spinner("Loading system and fetching data..."):
-                    try:
-                        # Initialize engine
-                        engine = SignalEngineV2(symbol='XAUUSD', models_dir=MODELS_DIR, use_patterns=True)
+                if not MODELS_AVAILABLE:
+                    st.error("❌ Models not loaded. Cannot generate signals.")
+                else:
+                    with st.spinner("Loading system and fetching data..."):
+                        try:
+                            # Initialize engine
+                            engine = SignalEngineV2(symbol='XAUUSD', models_dir=MODELS_DIR, use_patterns=True)
 
-                        # Connect to MT5
-                        trader = MT5Trader(
-                            login=5050913403,
-                            password="Ahmed@477447",
-                            server="MetaQuotes-Demo",
-                            demo_mode=True
-                        )
+                            # Connect to MT5
+                            trader = MT5Trader(
+                                login=5050913403,
+                                password="Ahmed@477447",
+                                server="MetaQuotes-Demo",
+                                demo_mode=True
+                            )
 
-                        if not trader.connect():
-                            st.error("❌ MT5 connection failed")
-                            return
+                            if not trader.connect():
+                                st.error("❌ MT5 connection failed")
+                                return
 
-                        # Fetch data
-                        st.info("📊 Fetching live data...")
-                        dfs = {}
-                        for tf in ['1D', '4H', '1H', '15min']:
-                            df = trader.fetch_ohlcv(symbol='XAUUSD', timeframe=tf, bars=100)
-                            if not df.empty:
-                                dfs[tf] = df
+                            # Fetch data
+                            st.info("📊 Fetching live data...")
+                            dfs = {}
+                            for tf in ['1D', '4H', '1H', '15min']:
+                                df = trader.fetch_ohlcv(symbol='XAUUSD', timeframe=tf, bars=100)
+                                if not df.empty:
+                                    dfs[tf] = df
 
-                        if not dfs:
-                            st.error("❌ No data from MT5")
-                            return
+                            if not dfs:
+                                st.error("❌ No data from MT5")
+                                return
 
-                        # Generate signals
-                        st.info("🤖 Generating signals from 10 trained models...")
-                        signals = {}
+                            # Generate signals
+                            st.info("🤖 Generating signals from 10 trained models...")
+                            signals = {}
 
-                        signal_col1, signal_col2, signal_col3, signal_col4 = st.columns(4)
-                        cols = [signal_col1, signal_col2, signal_col3, signal_col4]
+                            signal_col1, signal_col2, signal_col3, signal_col4 = st.columns(4)
+                            cols = [signal_col1, signal_col2, signal_col3, signal_col4]
 
-                        for idx, tf in enumerate(['1D', '4H', '1H', '15min']):
-                            if tf in dfs:
-                                sig = engine.generate_signal(dfs[tf], tf)
-                                signals[tf] = sig
+                            for idx, tf in enumerate(['1D', '4H', '1H', '15min']):
+                                if tf in dfs:
+                                    sig = engine.generate_signal(dfs[tf], tf)
+                                    signals[tf] = sig
 
-                                with cols[idx]:
-                                    direction_color = "🟢" if sig.direction == "BUY" else ("🔴" if sig.direction == "SELL" else "⚪")
-                                    st.metric(
-                                        f"{tf}",
-                                        f"{direction_color} {sig.direction}",
-                                        f"Conf: {sig.confidence:.0%}"
-                                    )
+                                    with cols[idx]:
+                                        direction_color = "🟢" if sig.direction == "BUY" else ("🔴" if sig.direction == "SELL" else "⚪")
+                                        st.metric(
+                                            f"{tf}",
+                                            f"{direction_color} {sig.direction}",
+                                            f"Conf: {sig.confidence:.0%}"
+                                        )
 
-                        # Multi-timeframe consensus
-                        st.divider()
-                        st.subheader("Multi-Timeframe Consensus")
-
-                        if len(signals) >= 2:
-                            consensus = engine.aggregate_signals(signals)
-
-                            consensus_col1, consensus_col2, consensus_col3 = st.columns(3)
-
-                            with consensus_col1:
-                                direction = consensus.get('direction', 'FLAT')
-                                direction_color = "🟢" if direction == "BUY" else ("🔴" if direction == "SELL" else "⚪")
-                                st.metric("Direction", f"{direction_color} {direction}")
-
-                            with consensus_col2:
-                                st.metric("Confidence", f"{consensus.get('confidence', 0):.0%}")
-
-                            with consensus_col3:
-                                alignment = consensus.get('alignment_count', 0)
-                                st.metric("Alignment", f"{alignment}/4 TFs agree")
-
-                            # Recommendation
+                            # Multi-timeframe consensus
                             st.divider()
-                            if alignment >= 3 and direction != "FLAT":
-                                st.success(f"✅ **STRONG SIGNAL**: {alignment}/4 timeframes agree → **FULL POSITION**")
-                            elif alignment >= 2 and direction != "FLAT":
-                                st.warning(f"⚠️ **MODERATE SIGNAL**: {alignment}/4 timeframes agree → **50-75% POSITION**")
-                            else:
-                                st.info(f"ℹ️ **WEAK/FLAT SIGNAL**: {alignment}/4 timeframes agree → **SKIP OR SMALL POSITION**")
+                            st.subheader("Multi-Timeframe Consensus")
 
-                        # Update session counter
-                        config = load_session_control()
-                        config["signals_generated"] += 1
-                        config["last_signal_time"] = datetime.now().isoformat()
-                        save_session_control(config)
+                            if len(signals) >= 2:
+                                consensus = engine.aggregate_signals(signals)
 
-                        st.success(f"✅ Signals generated! ({config['signals_generated']}/{config['max_signals_per_session']} used)")
+                                consensus_col1, consensus_col2, consensus_col3 = st.columns(3)
 
-                        # Cleanup
-                        trader.disconnect()
+                                with consensus_col1:
+                                    direction = consensus.get('direction', 'FLAT')
+                                    direction_color = "🟢" if direction == "BUY" else ("🔴" if direction == "SELL" else "⚪")
+                                    st.metric("Direction", f"{direction_color} {direction}")
 
-                    except Exception as e:
-                        st.error(f"❌ Error: {str(e)[:200]}")
+                                with consensus_col2:
+                                    st.metric("Confidence", f"{consensus.get('confidence', 0):.0%}")
+
+                                with consensus_col3:
+                                    alignment = consensus.get('alignment_count', 0)
+                                    st.metric("Alignment", f"{alignment}/4 TFs agree")
+
+                                # Recommendation
+                                st.divider()
+                                if alignment >= 3 and direction != "FLAT":
+                                    st.success(f"✅ **STRONG SIGNAL**: {alignment}/4 timeframes agree → **FULL POSITION**")
+                                elif alignment >= 2 and direction != "FLAT":
+                                    st.warning(f"⚠️ **MODERATE SIGNAL**: {alignment}/4 timeframes agree → **50-75% POSITION**")
+                                else:
+                                    st.info(f"ℹ️ **WEAK/FLAT SIGNAL**: {alignment}/4 timeframes agree → **SKIP OR SMALL POSITION**")
+
+                            # Update session counter
+                            config = load_session_control()
+                            config["signals_generated"] += 1
+                            config["last_signal_time"] = datetime.now().isoformat()
+                            save_session_control(config)
+
+                            st.success(f"✅ Signals generated! ({config['signals_generated']}/{config['max_signals_per_session']} used)")
+
+                            # Cleanup
+                            trader.disconnect()
+
+                        except Exception as e:
+                            st.error(f"❌ Error: {str(e)[:200]}")
 
         with tab2:
             st.header("📡 Live Signal Scanner")
@@ -460,6 +486,8 @@ def main():
                 else:
                     st.metric("Time Remaining", "N/A")
 
+    elif is_valid and not MODELS_AVAILABLE:
+        st.error("❌ Models not available. Please train models first.")
     else:
         # Access denied
         st.error(msg, icon="🚫")

@@ -1,0 +1,156 @@
+================================================================================
+MT5 INTEGRATION CELL (ADD TO NOTEBOOK 05 BEFORE cell_live)
+================================================================================
+
+# ── MT5 Trading Integration (DEMO MODE) ──────────────────────────────────────
+
+# Import MT5 trader
+from src.mt5_trader import MT5Trader
+
+# Configuration: YOUR DEMO ACCOUNT
+MT5_LOGIN = YOUR_DEMO_LOGIN           # e.g., 1234567
+MT5_PASSWORD = YOUR_DEMO_PASSWORD     # e.g., "abc123"
+MT5_SERVER = "ICMarkets-Demo"         # Check your broker's demo server
+DEMO_MODE = True                      # ✅ DEMO MODE — safe for testing
+
+# Initialize MT5 connection
+trader = MT5Trader(
+    login=MT5_LOGIN,
+    password=MT5_PASSWORD,
+    server=MT5_SERVER,
+    demo_mode=DEMO_MODE
+)
+
+# Connect to MT5
+if trader.connect():
+    print("✅ MT5 ready (DEMO MODE)")
+    summary = trader.get_account_summary()
+    print(f"   Equity: ${summary['equity']:,.2f}")
+    print(f"   Margin Free: ${summary['margin_free']:,.2f}")
+else:
+    print("❌ MT5 connection failed")
+    trader = None
+
+
+================================================================================
+MODIFIED cell_live (AROUND LINE WHERE SIGNAL IS GENERATED)
+================================================================================
+
+# After compute_signal returns f_sig:
+
+if f_sig:
+    _logged_bars.add(bar_id)
+
+    # Place order on MT5 (if connected & in demo mode)
+    if trader and trader.connected:
+        order = trader.place_order(
+            symbol=ASSET,
+            signal=f_sig['signal'],
+            entry_price=f_sig['entry'],
+            sl_price=f_sig['sl'],
+            tp_price=f_sig['tp'],
+            confidence=f_sig['confidence'] / 100.0,
+        )
+
+        # Show account summary after order
+        if order:
+            summary = trader.get_account_summary()
+            print(f"   [ACCOUNT] Equity: ${summary['equity']:,.2f} | Open: {summary['open_positions']} | Daily P/L: ${summary['daily_pnl']:,.2f}")
+
+    print(f'[{now_str}][{_count:4d}] *** {f_sig["signal"]} {ASSET} @ {f_price:.3f} | SL={f_sig["sl"]:.3f} | TP={f_sig["tp"]:.3f} | conf={f_sig["confidence"]}% ***')
+
+else:
+    dir_lbl = 'BUY' if f_fc['direction'] > 0 else ('SELL' if f_fc['direction'] < 0 else 'FLAT')
+    print(f'[{now_str}][{_count:4d}] {dir_lbl:4s} | {f_price:.3f} | {f_reason}')
+
+
+================================================================================
+AT END OF NOTEBOOK (CLEANUP)
+================================================================================
+
+# Disconnect MT5 when done
+if trader:
+    trader.disconnect()
+    print("MT5 disconnected")
+
+
+================================================================================
+EXPECTED OUTPUT (DEMO MODE)
+================================================================================
+
+[MT5] ✅ Connected to DEMO account
+      Login: 1234567
+      Equity: $10,000.00
+      Balance: $10,000.00
+      Margin Free: $9,500.00
+[MT5] 🧪 DEMO MODE ENABLED — Orders validated but NOT placed
+
+[16:05:30 UTC][1] *** BUY XAUUSD @ 2450.550 | SL=2448.050 | TP=2455.050 | conf=72% ***
+[MT5] 🧪 DEMO — BUY 0.50 XAUUSD @ 2450.550
+       SL: 2448.050 (250.0p) | TP: 2455.050 (450.0p) | RR: 1.80
+       Confidence: 72%
+   [ACCOUNT] Equity: $10,000.00 | Open: 1 | Daily P/L: $0.00
+
+[16:06:30 UTC][2] FLAT | 2450.450 | Model is NEUTRAL
+
+[16:07:30 UTC][3] *** SELL XAUUSD @ 2450.100 | SL=2452.100 | TP=2445.100 | conf=68% ***
+[MT5] 🧪 DEMO — SELL 0.50 XAUUSD @ 2450.100
+       SL: 2452.100 (200.0p) | TP: 2445.100 (500.0p) | RR: 2.50
+       Confidence: 68%
+   [ACCOUNT] Equity: $10,000.00 | Open: 2 | Daily P/L: $0.00
+
+
+================================================================================
+ORDERS LOGGED TO: results/mt5_trades.json
+================================================================================
+
+[
+  {
+    "timestamp": "2026-05-23T16:05:30.123456+00:00",
+    "mode": "DEMO_VALIDATED",
+    "symbol": "XAUUSD",
+    "signal": "BUY",
+    "entry": 2450.55,
+    "sl": 2448.05,
+    "tp": 2455.05,
+    "size": 0.5,
+    "sl_pips": 250.0,
+    "tp_pips": 450.0,
+    "rr_ratio": 1.8,
+    "confidence": 0.72
+  },
+  ...
+]
+
+
+================================================================================
+CONFIGURATION: ADJUST IN src/mt5_trader.py
+================================================================================
+
+Line ~45 in class MT5Trader.__init__():
+
+self.config = {
+    'position_size_pct': 0.02,      # 2% of equity per trade (adjust 0.01-0.05)
+    'max_daily_loss_pct': 0.05,     # Stop if -5% loss (adjust 0.03-0.10)
+    'min_sl_pips': 20,              # Minimum 20 pips SL (adjust 15-30)
+    'max_position_count': 3,        # Max 3 open at once (adjust 1-5)
+    'slippage_pips': 5,             # Expected slippage (adjust 3-10)
+}
+
+Changes take effect on next trader = MT5Trader(...) initialization.
+
+
+================================================================================
+CHECKLIST: DEMO VALIDATION (1-2 WEEKS)
+================================================================================
+
+- [ ] MT5 connects successfully
+- [ ] 10+ orders validated and logged
+- [ ] Risk controls reject at least 1 risky order
+- [ ] Account summary updates after each order
+- [ ] No errors over 24-hour test
+- [ ] results/mt5_trades.json has complete order history
+- [ ] Calculated position sizes reasonable (0.1-1.0 lot)
+- [ ] Win rate >= 50% (if testing on live data)
+
+Then ONLY change demo_mode=False for LIVE trading.

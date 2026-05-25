@@ -1,0 +1,35 @@
+{
+  "timestamp": "2026-05-25T15:57:07.388853",
+  "phase": 3,
+  "asset": "XAUUSD",
+  "data_period": "2019-04-24 to 2024-12-31",
+  "models": {
+    "lstm": {
+      "type": "Deep Neural Network",
+      "accuracy": 0.537102460861206,
+      "auc": 0.5541079044342041,
+      "epochs_trained": 39,
+      "file": "best_model_lstm.h5"
+    },
+    "xgboost": {
+      "type": "GradientBoostingClassifier",
+      "accuracy": 0.5724381625441696,
+      "cv_auc_mean": 0.47064516129032263,
+      "cv_auc_std": 0.031336631999512025,
+      "n_estimators": 300,
+      "max_depth": 5,
+      "file": "best_model_xgb.pkl"
+    }
+  },
+  "ensemble": {
+    "lstm_weight": 0.4,
+    "xgboost_weight": 0.6,
+    "expected_ensemble_auc": 0.5040302585478752
+  },
+  "data": {
+    "training_samples": 1132,
+    "validation_samples": 283,
+    "feature_count": 42,
+    "class_distribution_up": 0.5477031802120141
+  }
+}

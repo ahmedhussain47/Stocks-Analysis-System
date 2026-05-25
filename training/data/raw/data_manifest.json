@@ -1,0 +1,85 @@
+{
+  "timestamp": "2026-05-25T15:39:41.117783",
+  "start_date": "2019-01-01",
+  "end_date": "2026-05-25",
+  "interval": "1d",
+  "assets": {
+    "EURUSD": {
+      "status": "success",
+      "bars": 1923,
+      "first_date": "2019-01-01 00:00:00",
+      "last_date": "2026-05-22 00:00:00",
+      "max_gap_hours": 120.0,
+      "file": "training\\data\\raw\\eurusd_1h_2019_2026.csv"
+    },
+    "GBPUSD": {
+      "status": "success",
+      "bars": 1923,
+      "first_date": "2019-01-01 00:00:00",
+      "last_date": "2026-05-22 00:00:00",
+      "max_gap_hours": 120.0,
+      "file": "training\\data\\raw\\gbpusd_1h_2019_2026.csv"
+    },
+    "USDCHF": {
+      "status": "success",
+      "bars": 1923,
+      "first_date": "2019-01-01 00:00:00",
+      "last_date": "2026-05-22 00:00:00",
+      "max_gap_hours": 120.0,
+      "file": "training\\data\\raw\\usdchf_1h_2019_2026.csv"
+    },
+    "XAUUSD": {
+      "status": "success",
+      "bars": 1860,
+      "first_date": "2019-01-02 00:00:00",
+      "last_date": "2026-05-22 00:00:00",
+      "max_gap_hours": 96.0,
+      "file": "training\\data\\raw\\xauusd_1h_2019_2026.csv"
+    },
+    "AUDUSD": {
+      "status": "success",
+      "bars": 1923,
+      "first_date": "2019-01-01 00:00:00",
+      "last_date": "2026-05-22 00:00:00",
+      "max_gap_hours": 120.0,
+      "file": "training\\data\\raw\\audusd_1h_2019_2026.csv"
+    },
+    "USDCAD": {
+      "status": "success",
+      "bars": 1923,
+      "first_date": "2019-01-01 00:00:00",
+      "last_date": "2026-05-22 00:00:00",
+      "max_gap_hours": 120.0,
+      "file": "training\\data\\raw\\usdcad_1h_2019_2026.csv"
+    },
+    "NZDUSD": {
+      "status": "success",
+      "bars": 1923,
+      "first_date": "2019-01-01 00:00:00",
+      "last_date": "2026-05-22 00:00:00",
+      "max_gap_hours": 120.0,
+      "file": "training\\data\\raw\\nzdusd_1h_2019_2026.csv"
+    },
+    "USDJPY": {
+      "status": "success",
+      "bars": 1923,
+      "first_date": "2019-01-01 00:00:00",
+      "last_date": "2026-05-22 00:00:00",
+      "max_gap_hours": 120.0,
+      "file": "training\\data\\raw\\usdjpy_1h_2019_2026.csv"
+    },
+    "DXY": {
+      "status": "failed",
+      "error": "Empty result from yfinance",
+      "bars": 0
+    },
+    "US10Y": {
+      "status": "success",
+      "bars": 1858,
+      "first_date": "2019-01-02 00:00:00",
+      "last_date": "2026-05-22 00:00:00",
+      "max_gap_hours": 96.0,
+      "file": "training\\data\\raw\\us10y_1h_2019_2026.csv"
+    }
+  }
+}

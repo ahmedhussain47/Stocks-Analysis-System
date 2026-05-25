@@ -1,0 +1,24 @@
+# ── Run ensemble forecast and display results ──────────────────────────────
+_regime = regime_det.detect(entry_df)
+fc = run_ensemble_forecast(entry_df, ENTRY_TF, TRAIN_BARS, FORECAST_H, use_chronos=USE_CHRONOS, regime=_regime.label)
+
+print('Running ensemble forecast ...')
+print('Models used : ', end='')
+used_models = []
+if fc.get('lstm_pred', 0) != 0:
+    used_models.append('LSTM')
+if fc.get('xgb_pred', 0) != 0:
+    used_models.append('XGBoost')
+print(', '.join(used_models) if used_models else '(none)')
+
+print()
+print(f'Ensemble forecast ({ENTRY_TF}, {FORECAST_H} bars ahead):')
+print(f'  Direction   : {"BUY" if fc["direction"] > 0 else "SELL" if fc["direction"] < 0 else "NEUTRAL"}')
+print(f'  Pred return : {fc["pred_return"]:+.5f}  ({fc["pred_return"]*100:+.3f}%)')
+print(f'  Pred prices : ')
+print(f'  LSTM pred   : {fc.get("lstm_pred", 0):+.5f}')
+print(f'  XGBoost pred: {fc.get("xgb_pred", 0):+.5f}')
+print()
+print(f'  Bar        Ensemble')
+for i in range(1, FORECAST_H+1):
+    print(f'  Bar+{i}      {fc["pred_return"]:+.5f}')

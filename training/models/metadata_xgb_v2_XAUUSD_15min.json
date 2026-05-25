@@ -1,0 +1,19 @@
+{
+  "timeframe": "15min",
+  "asset": "XAUUSD",
+  "n_features": 47,
+  "n_samples": 32528,
+  "best_auc": 0.5188137108895434,
+  "best_params": {
+    "max_depth": 8,
+    "n_estimators": 577,
+    "learning_rate": 0.03808261532976204,
+    "subsample": 0.6283537019324555,
+    "colsample_bytree": 0.7045001435445922,
+    "min_child_weight": 6,
+    "gamma": 0.22543139967904924,
+    "reg_alpha": 0.7065466801584028,
+    "reg_lambda": 0.8297048382706698
+  },
+  "training_date": "2026-05-25T22:53:17.648656"
+}

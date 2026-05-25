@@ -13,15 +13,8 @@ import sys
 import xgboost as xgb
 import tensorflow as tf
 
-# Fix imports for different execution contexts (direct run vs notebook)
-try:
-    from training.feature_engineering_v2 import build_features_v2
-except ImportError:
-    # When imported from notebooks, adjust path
-    project_root = Path(__file__).parent.parent
-    if str(project_root) not in sys.path:
-        sys.path.insert(0, str(project_root))
-    from training.feature_engineering_v2 import build_features_v2
+# Import feature builder
+from src.feature_engineering import build_features_v2
 
 from src.pattern_detector import PatternDetector
 

@@ -316,3 +316,43 @@ def extract_signal_features(featured_df: pd.DataFrame) -> Optional[pd.DataFrame]
     if not cols:
         return None
     return featured_df[cols].dropna()
+
+
+def build_features_v2(df: pd.DataFrame, timeframe: str = '1D') -> pd.DataFrame:
+    """
+    Build v2 feature matrix from OHLCV data.
+
+    Placeholder function that builds standard technical indicators.
+    Used by ModelBundle for inference.
+
+    Args:
+        df: OHLCV DataFrame (columns: open, high, low, close, volume)
+        timeframe: '1D', '4H', '1H', or '15min'
+
+    Returns:
+        Feature matrix for model inference
+    """
+    if df is None or len(df) < 2:
+        return pd.DataFrame()
+
+    feat = df[['open', 'high', 'low', 'close', 'volume']].copy()
+
+    # Add basic technical indicators
+    feat['atr_14'] = atr(df, 14)
+    feat['rsi_14'] = rsi(df['close'], 14)
+    feat['ema_20'] = ema(df['close'], 20)
+    feat['ema_50'] = ema(df['close'], 50)
+    feat['ema_200'] = ema(df['close'], 200)
+
+    # Price position
+    high_20 = df['high'].rolling(20, min_periods=1).max()
+    low_20 = df['low'].rolling(20, min_periods=1).min()
+    feat['price_pct_high_20'] = (df['close'] - low_20) / (high_20 - low_20 + 1e-9)
+
+    # Returns
+    feat['log_return'] = np.log(df['close'] / df['close'].shift(1))
+
+    # Fill NaNs
+    feat = feat.bfill().ffill().fillna(0)
+
+    return feat

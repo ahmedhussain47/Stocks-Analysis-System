@@ -1,0 +1,42 @@
+{
+  "timestamp": "2026-05-25T16:03:52.121903",
+  "phase": 3,
+  "approach": "Multi-Asset Enriched (XAUUSD + cross-asset correlations)",
+  "asset": "XAUUSD",
+  "enriched_with": [
+    "EURUSD",
+    "GBPUSD",
+    "USDJPY",
+    "US10Y"
+  ],
+  "models": {
+    "lstm": {
+      "type": "Deep Neural Network (Multi-Asset)",
+      "accuracy": 0.5034013390541077,
+      "auc": 0.5065065622329712,
+      "epochs_trained": 21,
+      "file": "best_model_lstm_multiasset.h5"
+    },
+    "xgboost": {
+      "type": "GradientBoostingClassifier (Multi-Asset)",
+      "accuracy": 0.5068027210884354,
+      "cv_auc_mean": 0.47293415441589054,
+      "cv_auc_std": 0.01693956948492498,
+      "n_estimators": 400,
+      "max_depth": 6,
+      "file": "best_model_xgb_multiasset.pkl"
+    }
+  },
+  "ensemble": {
+    "lstm_weight": 0.4,
+    "xgboost_weight": 0.6,
+    "expected_ensemble_auc": 0.48636311754272277
+  },
+  "data": {
+    "training_samples": 1173,
+    "validation_samples": 294,
+    "feature_count": 45,
+    "class_distribution_up": 0.5453306066803,
+    "period": "2019-02-07 00:00:00 to 2024-12-31 00:00:00"
+  }
+}

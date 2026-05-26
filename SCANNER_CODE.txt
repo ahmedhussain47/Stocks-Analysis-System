@@ -1,0 +1,191 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# GOLD SIGNAL ENGINE - Complete 3-Tier System
+# Tier 1: Pattern Detection + ML Recognition
+# Tier 2: Entry Optimization (Tight TP/SL)
+# Tier 3: Macro Validation
+# ══════════════════════════════════════════════════════════════════════════════
+
+import yfinance as yf
+import pandas as pd
+import numpy as np
+import pickle
+import time
+import threading
+from datetime import datetime, timezone
+import warnings
+warnings.filterwarnings('ignore')
+
+# ── Load Models ──
+def load_models():
+    try:
+        import tensorflow as tf
+        import xgboost as xgb
+
+        lstm = tf.keras.models.load_model('../results/advanced_models/best_model_lstm.h5')
+        xgb_model = xgb.Booster()
+        xgb_model.load_model('../results/advanced_models/best_model_xgb.json')
+        with open('../results/advanced_models/scaler.pkl', 'rb') as f:
+            scaler = pickle.load(f)
+        print("[OK] LSTM + XGBoost models loaded")
+        return lstm, xgb_model, scaler
+    except Exception as e:
+        print(f"[ERROR] Model loading: {e}")
+        return None, None, None
+
+# ── Tier 1: Pattern Detection ──
+def detect_patterns(df):
+    if len(df) < 50:
+        return None
+    close = df['Close'].values[-50:]
+    high = df['High'].values[-50:]
+    low = df['Low'].values[-50:]
+
+    if close[-1] > close[-2] and low[-10] > low[-20] and low[-5] < low[-10]:
+        return {'pattern': 'DOUBLE_BOTTOM', 'strength': 0.7, 'direction': 1}
+    if close[-1] < close[-2] and high[-10] < high[-20] and high[-5] > high[-10]:
+        return {'pattern': 'DOUBLE_TOP', 'strength': 0.7, 'direction': -1}
+
+    support = low[-20:].min()
+    if abs(close[-1] - support) / support < 0.005:
+        return {'pattern': 'SUPPORT_BOUNCE', 'strength': 0.6, 'direction': 1}
+
+    return None
+
+# ── Tier 1: ML Prediction ──
+def ml_predict(df, lstm_model, xgb_model, scaler):
+    try:
+        close = df['Close'].values
+        ema20 = float(pd.Series(close).ewm(span=20).mean().iloc[-1])
+        ema50 = float(pd.Series(close).ewm(span=50).mean().iloc[-1])
+
+        delta = pd.Series(close).diff()
+        gain = float((delta.where(delta > 0, 0)).rolling(14).mean().iloc[-1])
+        loss = float((-delta.where(delta < 0, 0)).rolling(14).mean().iloc[-1])
+        rsi = 100 - (100 / (1 + gain/loss)) if loss != 0 else 50.0
+
+        macd = float(pd.Series(close).ewm(span=12).mean().iloc[-1] - pd.Series(close).ewm(span=26).mean().iloc[-1])
+        atr = float((df['High'] - df['Low']).rolling(14).mean().iloc[-1])
+        bb_std = float(pd.Series(close).rolling(20).std().iloc[-1])
+        vol_ma = float(df['Volume'].rolling(20).mean().iloc[-1])
+        returns = float((close[-1] - close[-2]) / close[-2]) if close[-2] != 0 else 0.0
+
+        X = np.array([[ema20, ema50, rsi, macd, atr, bb_std, vol_ma, returns]])
+        X_scaled = scaler.transform(X)
+        X_lstm = X_scaled.reshape((1, 1, 8))
+        lstm_pred = float(lstm_model.predict(X_lstm, verbose=0)[0][0])
+
+        import xgboost as xgb
+        xgb_pred = float(xgb_model.predict(xgb.DMatrix(X_scaled))[0])
+
+        ensemble = lstm_pred * 0.6 + xgb_pred * 0.4
+        direction = 1 if ensemble > 0.5 else -1
+        confidence = abs(ensemble - 0.5) * 200
+
+        return {'direction': direction, 'confidence': min(confidence, 95), 'lstm': lstm_pred, 'xgb': xgb_pred}
+    except:
+        return None
+
+# ── Tier 2: Entry Optimization ──
+def optimize_entry(df, signal):
+    close = df['Close'].iloc[-1]
+    atr = (df['High'] - df['Low']).rolling(14).mean().iloc[-1]
+    support = df['Low'].iloc[-50:].min()
+
+    if signal == 'BUY':
+        entry = close
+        sl = max(support * 0.99, close - atr * 1.0)
+        tp1 = close + atr * 1.5
+        tp2 = close + atr * 2.2
+        tp3 = close + atr * 3.0
+        rr = (tp1 - entry) / (entry - sl) if (entry - sl) > 0 else 0
+    else:
+        entry = close
+        sl = close + atr * 1.0
+        tp1 = close - atr * 1.5
+        tp2 = close - atr * 2.2
+        tp3 = close - atr * 3.0
+        rr = (entry - tp1) / (sl - entry) if (sl - entry) > 0 else 0
+
+    return {'entry': entry, 'sl': sl, 'tp1': tp1, 'tp2': tp2, 'tp3': tp3, 'rr': rr}
+
+# ── Tier 3: Validation ──
+def validate_signal(direction, df):
+    close = df['Close'].values
+    ema20 = pd.Series(close).ewm(span=20).mean().iloc[-1]
+    ema50 = pd.Series(close).ewm(span=50).mean().iloc[-1]
+    trend = 1 if ema20 > ema50 else -1
+    if direction != trend:
+        return False
+    return True
+
+# ── Scanner Setup ──
+LIVE = False
+scan_interval = 500
+lstm_model, xgb_model, scaler = load_models()
+
+if 'live_stop' not in dir():
+    live_stop = threading.Event()
+if '_logged_bars' not in dir():
+    _logged_bars = set()
+
+def _live_worker():
+    _count = 0
+    while not live_stop.is_set():
+        try:
+            now = datetime.now(timezone.utc)
+            df = yf.download('GC=F', period='7d', interval='1h', progress=False)
+            if df.empty:
+                time.sleep(scan_interval)
+                continue
+
+            bar_id = df.index[-1]
+            if bar_id in _logged_bars:
+                _count += 1
+                print(f"[{now.strftime('%H:%M:%S')}][{_count:3d}] logged")
+                time.sleep(scan_interval)
+                continue
+
+            _count += 1
+            pattern = detect_patterns(df)
+            ml = ml_predict(df, lstm_model, xgb_model, scaler) if lstm_model else None
+
+            if ml:
+                direction = ml['direction']
+                confidence = ml['confidence']
+                source = f"ML ({confidence:.0f}%)"
+            elif pattern:
+                direction = pattern['direction']
+                confidence = pattern['strength'] * 100
+                source = pattern['pattern']
+            else:
+                time.sleep(scan_interval)
+                continue
+
+            if not validate_signal(direction, df):
+                time.sleep(scan_interval)
+                continue
+
+            signal = 'BUY' if direction > 0 else 'SELL'
+            tp_sl = optimize_entry(df, signal)
+            _logged_bars.add(bar_id)
+
+            print(f"\n{'='*70}")
+            print(f"SIGNAL: {signal}  Entry: {tp_sl['entry']:.5f}")
+            print(f"SL: {tp_sl['sl']:.5f}  ({abs(tp_sl['entry']-tp_sl['sl']):.2f} pts)")
+            print(f"TP1/2/3: {tp_sl['tp1']:.2f} / {tp_sl['tp2']:.2f} / {tp_sl['tp3']:.2f}")
+            print(f"R:R: 1:{tp_sl['rr']:.2f} | Conf: {confidence:.0f}% | {source}")
+            print(f"{'='*70}\n")
+
+            time.sleep(scan_interval)
+        except Exception as e:
+            print(f"[ERROR] {str(e)[:40]}")
+            time.sleep(scan_interval)
+
+if LIVE:
+    print(f"Live scanner ON (3-Tier + ML): every {scan_interval}s\n")
+    live_stop.clear()
+    worker_thread = threading.Thread(target=_live_worker, daemon=True)
+    worker_thread.start()
+else:
+    print("Live scanner OFF (change LIVE = True)")
+    live_stop.set()

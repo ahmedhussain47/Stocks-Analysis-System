@@ -1,0 +1,153 @@
+
+=== CELL 1 [cell_config] ===
+# ╔══════════════════════════════════════════════════════╗
+# ║           EDIT ONLY THIS CELL                      ║
+# ╚══════════════════════════════════════════════════════╝
+
+ASSET       = 'XAUUSD'   # 'XAUUSD' | 'EURUSD' | 'GBPUSD' | 'XAGUSD'
+INTERVAL    = '1h'       # '1h' recommended (2 years of data)
+                          # '15m' works but only 60 days available
+
+# Walk-forward parameters
+W           = 500        # training window (bars)
+S           = 24         # step size (bars) — 24 = one day of 1H bars
+H           = 1          # forecast horizon
+
+# Models to evaluate
+RUN_CHRONOS = True       # set False to skip Chronos (faster, CPU-only baseline)
+RUN_ETS     = True       # AutoETS already evaluated; keep True for comparison
+
+# Minimum Sharpe to include a model in the ensemble
+MIN_SHARPE  = 0.0
+
+
+=== CELL 2 [cell_imports] ===
+import sys, os, time, warnings, json
+warnings.filterwarnings('ignore')
+ROOT = os.path.abspath('..')
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+
+import numpy as np
+import pandas as pd
+import yfinance as yf
+import matplotlib.pyplot as plt
+from pathlib import Path
+from statsforecast import StatsForecast
+from statsforecast.models import AutoETS
+
+from src.data_feeds import SYMBOL_MAP
+
+RESULTS_DIR = Path(ROOT) / 'results' / 'gold_wf'
+RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+
+plt.rcParams.update({'figure.dpi': 120, 'axes.grid': True, 'grid.alpha': 0.3})
+print('Imports OK')
+print(f'Asset: {ASSET}  |  Interval: {INTERVAL}  |  W={W} S={S} H={H}')
+
+
+=== CELL 4 [cell_load_chronos] ===
+# ── Load Chronos (CPU — first load ~30s, cached after) ───────────────────────
+_chronos = None
+
+if RUN_CHRONOS:
+    print('Loading Chronos-Bolt-Tiny on CPU ...', end=' ', flush=True)
+    t0 = time.time()
+    from src.new_models import ChronosZeroShotForecaster
+    _chronos = ChronosZeroShotForecaster('amazon/chronos-bolt-tiny')
+    print(f'OK  ({time.time()-t0:.1f}s)')
+    print('Chronos will run inference on CPU — slower than GPU but feasible for 1 asset.')
+else:
+    print('Chronos disabled (RUN_CHRONOS=False)')
+
+
+=== CELL 5 [cell_wf] ===
+# ── Walk-forward evaluation ───────────────────────────────────────────────────
+
+def _ets_pred(train_ret: np.ndarray, h: int = 1) -> float:
+    n  = len(train_ret)
+    sf = StatsForecast(
+        models=[AutoETS(season_length=7)],
+        freq='1h', n_jobs=1
+    )
+    sf_df = pd.DataFrame({
+        'unique_id': ['x'] * n,
+        'ds': pd.date_range('2000-01-01', periods=n, freq='1h'),
+        'y': train_ret,
+    })
+    pred = sf.forecast(df=sf_df, h=h)
+    return float(pred['AutoETS'].values[0])
+
+
+def _chronos_pred(close_window: np.ndarray, h: int = 1) -> float | None:
+    if _chronos is None:
+        return None
+    try:
+        path    = _chronos.predict_close_path(close_window, prediction_length=h)
+        last_px = float(close_window[-1])
+        return float(np.log(path[0] / last_px))
+    except Exception as e:
+        return None
+
+
+cutoffs = list(range(W, len(log_ret) - H, S))
+n_cuts  = len(cutoffs)
+records = []
+
+t_start = time.time()
+print(f'Starting walk-forward: {n_cuts} cut
+
+
+=== CELL 6 [cell_metrics] ===
+# ── Compute metrics & new ensemble weights ────────────────────────────────────
+
+# Annualisation: 1H bars, step S=24 → daily rebalancing → √252
+ANNUALISE = np.sqrt(252)
+
+metrics = []
+for model in ['AutoETS', 'Chronos']:
+    col = f'{model}_ls_ret'
+    if col not in df_wf.columns:
+        continue
+    ls     = df_wf[col].dropna()
+    da_col = f'{model}_correct'
+    da     = df_wf[da_col].mean() if da_col in df_wf.columns else float('nan')
+    sharpe = float(ls.mean() / ls.std() * ANNUALISE) if ls.std() > 0 else 0.0
+    metrics.append({
+        'model':    model,
+        'n':        len(ls),
+        'dir_acc':  round(da, 4),
+        'mean_ret': round(float(ls.mean()), 6),
+        'sharpe':   round(sharpe, 4),
+    })
+
+metrics_df = pd.DataFrame(metrics).sort_values('sharpe', ascending=False)
+print('── Gold Walk-Forward Metrics ──')
+print(metrics_df.to_string(index=False))
+
+# Derive Sharpe-proportional weights (exclude non-positive Sharpe)
+valid = metrics_df[metrics_df['sharpe'] > MIN_SHAR
+
+
+=== CELL 9 [cell_distacc] ===
+# ── Rolling DirAcc over time (signal stability check) ─────────────────────────
+# A model that looks good overall but has unstable DirAcc is not reliable.
+ROLL = 50   # rolling window in cutoffs
+
+correct_cols = [c for c in df_wf.columns if c.endswith('_correct')]
+if correct_cols:
+    fig, ax = plt.subplots(figsize=(14, 4))
+    for col in correct_cols:
+        model = col.replace('_correct', '')
+        color = 'steelblue' if model == 'Chronos' else 'darkorange'
+        roll  = df_wf[col].rolling(ROLL).mean()
+        ax.plot(roll.values, lw=1.5, label=f'{model} rolling-{ROLL} DirAcc', color=color)
+    ax.axhline(0.5, color='gray', ls='--', lw=1.0, label='Random (50%)')
+    ax.axhline(0.52, color='green', ls=':', lw=1.0, label='Target (52%)')
+    ax.set_ylim(0.3, 0.7)
+    ax.set_title(f'{ASSET} {INTERVAL} — Rolling DirAcc (window={ROLL} cutoffs)')
+    ax.set_xlabel('Cutoff index')
+    ax.set_ylabel('Directional accuracy')
+    ax.legend()
+    plt.tight_layout()
+    plt.show()

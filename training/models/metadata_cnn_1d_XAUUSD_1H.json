@@ -1,0 +1,14 @@
+{
+  "timeframe": "1H",
+  "asset": "XAUUSD",
+  "lookback": 30,
+  "channels": 5,
+  "train_samples": 15166,
+  "val_samples": 2995,
+  "test_samples": 2996,
+  "train_acc": 0.5263747572898865,
+  "val_acc": 0.3726210296154022,
+  "test_acc": 0.336448609828949,
+  "epochs_trained": 29,
+  "training_date": "2026-05-25T21:23:30.112116"
+}

@@ -320,39 +320,77 @@ def extract_signal_features(featured_df: pd.DataFrame) -> Optional[pd.DataFrame]
 
 def build_features_v2(df: pd.DataFrame, timeframe: str = '1D') -> pd.DataFrame:
     """
-    Build v2 feature matrix from OHLCV data.
+    Build v2 feature matrix from OHLCV data (47 features for ML models).
 
-    Placeholder function that builds standard technical indicators.
-    Used by ModelBundle for inference.
+    Matches training pipeline exactly. Used by ModelBundle for inference.
 
     Args:
         df: OHLCV DataFrame (columns: open, high, low, close, volume)
         timeframe: '1D', '4H', '1H', or '15min'
 
     Returns:
-        Feature matrix for model inference
+        Feature matrix (47 features) for model inference
     """
-    if df is None or len(df) < 2:
+    if df is None or len(df) < 50:
         return pd.DataFrame()
 
-    feat = df[['open', 'high', 'low', 'close', 'volume']].copy()
+    feat = df.copy()
+    c = df['close']
 
-    # Add basic technical indicators
+    # Trend (4 features)
+    feat['ema_20'] = ema(c, 20)
+    feat['ema_50'] = ema(c, 50)
+    feat['ema_200'] = ema(c, 200)
+    feat['dema_20'] = dema(c, 20)
+
+    # Momentum (7 features)
+    feat['rsi_14'] = rsi(c, 14)
+    feat['rsi_7'] = rsi(c, 7)
+    macd_l, macd_s, macd_h = macd(c)
+    feat['macd_line'] = macd_l
+    feat['macd_signal'] = macd_s
+    feat['macd_hist'] = macd_h
+    feat['stoch_k'], feat['stoch_d'] = stochastic(df)
+
+    # Volatility (6 features)
     feat['atr_14'] = atr(df, 14)
-    feat['rsi_14'] = rsi(df['close'], 14)
-    feat['ema_20'] = ema(df['close'], 20)
-    feat['ema_50'] = ema(df['close'], 50)
-    feat['ema_200'] = ema(df['close'], 200)
+    feat['atr_7'] = atr(df, 7)
+    bb_upper, bb_mid, bb_lower = bollinger_bands(c, 20, 2.0)
+    feat['bb_upper'] = bb_upper
+    feat['bb_mid'] = bb_mid
+    feat['bb_lower'] = bb_lower
+    feat['bb_width'] = (bb_upper - bb_lower) / bb_mid.replace(0, np.nan)
+    feat['bb_pct'] = (c - bb_lower) / (bb_upper - bb_lower).replace(0, np.nan)
 
-    # Price position
-    high_20 = df['high'].rolling(20, min_periods=1).max()
-    low_20 = df['low'].rolling(20, min_periods=1).min()
-    feat['price_pct_high_20'] = (df['close'] - low_20) / (high_20 - low_20 + 1e-9)
+    # Trend strength (3 features)
+    adx_v, plus_di_v, minus_di_v = adx(df, 14)
+    feat['adx_14'] = adx_v
+    feat['plus_di'] = plus_di_v
+    feat['minus_di'] = minus_di_v
 
-    # Returns
-    feat['log_return'] = np.log(df['close'] / df['close'].shift(1))
+    # Price relative to moving averages (3 features)
+    feat['dist_ema20'] = (c / feat['ema_20'].replace(0, np.nan) - 1) * 100
+    feat['dist_ema50'] = (c / feat['ema_50'].replace(0, np.nan) - 1) * 100
+    feat['dist_ema200'] = (c / feat['ema_200'].replace(0, np.nan) - 1) * 100
 
-    # Fill NaNs
-    feat = feat.bfill().ffill().fillna(0)
+    # Returns (4 features)
+    feat['ret_1'] = c.pct_change(1)
+    feat['ret_5'] = c.pct_change(5)
+    feat['ret_20'] = c.pct_change(20)
+    feat['log_return'] = np.log(c / c.shift(1))
 
-    return feat
+    # Volatility regime (1 feature)
+    feat['vol_regime'] = feat['atr_14'] / feat['atr_14'].rolling(50, min_periods=10).mean()
+
+    # Volume ratio (1 feature)
+    if 'volume' in df.columns and df['volume'].sum() > 0:
+        vol_ma = df['volume'].rolling(20, min_periods=5).mean()
+        feat['volume_ratio'] = df['volume'] / vol_ma.replace(0, np.nan)
+    else:
+        feat['volume_ratio'] = 1.0
+
+    # Select only feature columns (exclude OHLCV)
+    feature_cols = [col for col in feat.columns if col not in ['open', 'high', 'low', 'close', 'volume']]
+    result = feat[feature_cols].dropna()
+
+    return result
